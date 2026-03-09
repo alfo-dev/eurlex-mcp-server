@@ -59,6 +59,7 @@ export function registerSearchTool(server: McpServer) {
     'eurlex_search',
     'Sucht EU-Rechtsakte nach Titel via EUR-Lex SPARQL',
     searchSchema.shape,
+    { readOnlyHint: true, destructiveHint: false },
     async (params) => handleEurlexSearch(params)
   )
 }

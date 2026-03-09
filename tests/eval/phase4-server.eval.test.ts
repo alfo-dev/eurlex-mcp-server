@@ -1,14 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../src/index.js'
+import { createServer } from '../../src/index.js'
 
 // ---------------------------------------------------------------------------
 // Helper: spin up a server + client pair over in-memory transport
 // ---------------------------------------------------------------------------
 async function createTestPair() {
   const server = createServer()
-  const client = new Client({ name: 'test-client', version: '1.0.0' })
+  const client = new Client({ name: 'eval-client', version: '1.0.0' })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
   await server.connect(serverTransport)
@@ -17,10 +17,11 @@ async function createTestPair() {
   return { server, client, clientTransport, serverTransport }
 }
 
-// ---------------------------------------------------------------------------
-// Phase 5 – Smoke / Capability Tests (no real API calls)
-// ---------------------------------------------------------------------------
-describe('Phase 5 – Smoke Tests', () => {
+// ===========================================================================
+// Phase 4 Eval – Server
+// PRD milestone: "pnpm run build erfolgreich, /health antwortet"
+// ===========================================================================
+describe('Phase 4 Eval – Server', () => {
   const pairs: Array<{ client: Client; clientTransport: any; serverTransport: any }> = []
 
   afterEach(async () => {
@@ -35,47 +36,32 @@ describe('Phase 5 – Smoke Tests', () => {
     pairs.length = 0
   })
 
-  // V17: Server startet → createServer() returns a valid McpServer
-  it('V17 – createServer() returns a functional McpServer that accepts connections', async () => {
-    const pair = await createTestPair()
-    pairs.push(pair)
+  it('createServer is exported from src/index.ts and returns an McpServer', async () => {
+    expect(typeof createServer).toBe('function')
 
-    // If we got here without throwing, the server started and accepted a connection.
-    // Verify the client can communicate by listing tools (basic protocol handshake succeeded).
-    const { tools } = await pair.client.listTools()
-    expect(tools).toBeDefined()
-    expect(Array.isArray(tools)).toBe(true)
+    const server = createServer()
+    expect(server).toBeDefined()
+    expect(typeof server.connect).toBe('function')
   })
 
-  // V18: MCP Inspector zeigt 2 Tools → server has eurlex_search + eurlex_fetch registered
-  it('V18 – server exposes exactly eurlex_search and eurlex_fetch tools', async () => {
+  it('createServer factory creates distinct instances per call', () => {
+    const server1 = createServer()
+    const server2 = createServer()
+
+    expect(server1).not.toBe(server2)
+  })
+
+  it('server registers exactly 2 tools: eurlex_search, eurlex_fetch', async () => {
     const pair = await createTestPair()
     pairs.push(pair)
 
     const { tools } = await pair.client.listTools()
     const toolNames = tools.map((t) => t.name).sort()
 
+    expect(tools).toHaveLength(2)
     expect(toolNames).toEqual(['eurlex_fetch', 'eurlex_search'])
   })
 
-  // V20: Session-Management → factory creates independent servers per call
-  it('V20 – factory creates independent server instances per call', async () => {
-    const pair1 = await createTestPair()
-    const pair2 = await createTestPair()
-    pairs.push(pair1, pair2)
-
-    // Both servers should be operational independently
-    const { tools: tools1 } = await pair1.client.listTools()
-    const { tools: tools2 } = await pair2.client.listTools()
-
-    expect(tools1.map((t) => t.name).sort()).toEqual(['eurlex_fetch', 'eurlex_search'])
-    expect(tools2.map((t) => t.name).sort()).toEqual(['eurlex_fetch', 'eurlex_search'])
-
-    // They should be distinct object instances
-    expect(pair1.server).not.toBe(pair2.server)
-  })
-
-  // Annotations: both tools have readOnlyHint: true, destructiveHint: false
   it('eurlex_search has annotations readOnlyHint=true, destructiveHint=false', async () => {
     const pair = await createTestPair()
     pairs.push(pair)
@@ -100,8 +86,7 @@ describe('Phase 5 – Smoke Tests', () => {
     expect(fetch?.annotations?.destructiveHint).toBe(false)
   })
 
-  // V22: eurlex_guide Prompt abrufbar → server has eurlex_guide prompt registered
-  it('V22 – server exposes eurlex_guide prompt', async () => {
+  it('server registers eurlex_guide prompt', async () => {
     const pair = await createTestPair()
     pairs.push(pair)
 
@@ -109,5 +94,20 @@ describe('Phase 5 – Smoke Tests', () => {
     const promptNames = prompts.map((p) => p.name)
 
     expect(promptNames).toContain('eurlex_guide')
+  })
+
+  it('eurlex_guide prompt returns content with CELEX guide text', async () => {
+    const pair = await createTestPair()
+    pairs.push(pair)
+
+    const result = await pair.client.getPrompt({ name: 'eurlex_guide', arguments: {} })
+
+    expect(result.messages).toHaveLength(1)
+    expect(result.messages[0].role).toBe('user')
+
+    const text = result.messages[0].content as { type: string; text: string }
+    expect(text.text).toContain('CELEX')
+    expect(text.text).toContain('Suchstrategie')
+    expect(text.text).toContain('32024R1689')
   })
 })

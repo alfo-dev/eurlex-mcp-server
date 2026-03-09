@@ -44,6 +44,7 @@ export function registerFetchTool(server: McpServer) {
     'eurlex_fetch',
     'Ruft Volltext eines EU-Rechtsakts per CELEX-ID ab',
     fetchSchema.shape,
+    { readOnlyHint: true, destructiveHint: false },
     async (params) => handleEurlexFetch(params)
   )
 }
