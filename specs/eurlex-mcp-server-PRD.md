@@ -1094,7 +1094,7 @@ if (transport === 'http') {
 | V13 | SPARQL per POST, nicht GET | Unit-Test | fetch mit method: 'POST' |
 | V14 | Redirect-Following bei Fetch | Unit-Test | `redirect: 'follow'` in Options |
 | V15 | Plain-Format entfernt Tags | Unit-Test | Kein `<div>` in Content |
-| V16 | MCP Tool-Registrierung erfolgreich | Build-Test | `npm run build` ohne Fehler |
+| V16 | MCP Tool-Registrierung erfolgreich | Build-Test | `pnpm run build` ohne Fehler |
 | V17 | Server startet und antwortet | Smoke-Test | GET /health → `{"status":"ok"}` |
 | V18 | MCP Inspector zeigt 2 Tools | Manuell | `eurlex_search` + `eurlex_fetch` |
 | V19 | Claude kann AI Act-Fragen beantworten | E2E-Manuell | Korrekte Antwort auf "Was regelt Art. 6?" |
@@ -1115,8 +1115,8 @@ if (transport === 'http') {
 - [ ] Input-Hardening: SPARQL-Injection escaped, CELEX-ID validiert
 
 ### Server gesamt
-- [ ] `npm run build` ohne TypeScript-Fehler
-- [ ] `npm test` → alle Unit-Tests grün
+- [ ] `pnpm run build` ohne TypeScript-Fehler
+- [ ] `pnpm test` → alle Unit-Tests grün
 - [ ] Integration-Tests: alle Live-Validierungen bestanden
 - [ ] `/health` Endpoint antwortet
 - [ ] MCP Inspector zeigt 2 Tools + 1 Prompt (`eurlex_guide`)
@@ -1143,9 +1143,10 @@ if (transport === 'http') {
 
 ```dockerfile
 FROM node:20-alpine
+RUN corepack enable
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
 COPY dist/ ./dist/
 ENV TRANSPORT=http
 ENV PORT=3001
@@ -1188,12 +1189,12 @@ NODE_ENV: production
 | 1 | Projekt-Setup (package.json, tsconfig, vitest.config) | Config-Dateien |
 | 2 | constants.ts + types.ts | `src/constants.ts`, `src/types.ts` |
 
-**Check:** `npm run build` kompiliert ohne Fehler, `npm test` läuft (0 Tests)
+**Check:** `pnpm run build` kompiliert ohne Fehler, `pnpm test` läuft (0 Tests)
 
 ---
 
 ### Phase 2: Core (CellarClient)
-> **Meilenstein:** `npm test` grün für alle Client-Tests (Tests 1-14 + V21)
+> **Meilenstein:** `pnpm test` grün für alle Client-Tests (Tests 1-14 + V21)
 
 | # | Schritt | Artefakte |
 |---|---|---|
@@ -1201,12 +1202,12 @@ NODE_ENV: production
 | 4 | GREEN: cellarClient.ts implementieren (inkl. `escapeSparqlString`) | `src/services/cellarClient.ts` |
 | 5 | REFACTOR: CellarClient aufräumen | — |
 
-**Check:** `npm test` → alle CellarClient-Tests grün
+**Check:** `pnpm test` → alle CellarClient-Tests grün
 
 ---
 
 ### Phase 3: Tools + Prompt
-> **Meilenstein:** `npm test` komplett grün (Tests 1-20 + V21)
+> **Meilenstein:** `pnpm test` komplett grün (Tests 1-20 + V21)
 
 | # | Schritt | Artefakte |
 |---|---|---|
@@ -1214,19 +1215,19 @@ NODE_ENV: production
 | 7 | GREEN: tools/search.ts + tools/fetch.ts | `src/tools/search.ts`, `src/tools/fetch.ts` |
 | 8 | prompts/guide.ts — eurlex_guide Prompt registrieren | `src/prompts/guide.ts` |
 
-**Check:** `npm test` → alle Tests grün
+**Check:** `pnpm test` → alle Tests grün
 
 ---
 
 ### Phase 4: Server
-> **Meilenstein:** `npm run build` erfolgreich, `/health` antwortet
+> **Meilenstein:** `pnpm run build` erfolgreich, `/health` antwortet
 
 | # | Schritt | Artefakte |
 |---|---|---|
 | 9 | index.ts + Server-Registration (Factory-Pattern + Prompt) | `src/index.ts` |
-| 10 | npm run build → TypeScript-Fehler beheben | `dist/` |
+| 10 | pnpm run build → TypeScript-Fehler beheben | `dist/` |
 
-**Check:** `npm run build` ohne Fehler, `curl localhost:3001/health` → `{"status":"ok"}`
+**Check:** `pnpm run build` ohne Fehler, `curl localhost:3001/health` → `{"status":"ok"}`
 
 ---
 
@@ -1238,7 +1239,7 @@ NODE_ENV: production
 | 11 | Integration-Tests ausführen | V1-V5 (Live Cellar API) |
 | 12 | MCP Inspector testen | V18 (2 Tools) + V22 (1 Prompt) |
 
-**Check:** `npm run test:integration` grün, MCP Inspector zeigt `eurlex_search`, `eurlex_fetch`, `eurlex_guide`
+**Check:** `pnpm run test:integration` grün, MCP Inspector zeigt `eurlex_search`, `eurlex_fetch`, `eurlex_guide`
 
 ---
 
