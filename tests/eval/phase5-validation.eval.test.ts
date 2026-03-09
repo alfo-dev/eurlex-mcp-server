@@ -163,7 +163,7 @@ describe('Phase 5 Eval – Validation Matrix', () => {
       expect(sparql).toContain('2023-01-15')
     })
 
-    it('V10: fetchDocument uses Accept: application/xhtml+xml', async () => {
+    it('V10: fetchDocument uses Accept: text/html via EUR-Lex URL', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         text: async () => '<html></html>',
@@ -173,12 +173,13 @@ describe('Phase 5 Eval – Validation Matrix', () => {
       await client.fetchDocument('32024R1689', 'DEU')
 
       expect(mockFetch).toHaveBeenCalledOnce()
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('eur-lex.europa.eu')
       const headers = options.headers as Record<string, string>
-      expect(headers['Accept']).toBe('application/xhtml+xml')
+      expect(headers['Accept']).toBe('text/html')
     })
 
-    it('V11: fetchDocument DEU uses Accept-Language: de', async () => {
+    it('V11: fetchDocument DEU uses DE in EUR-Lex URL path', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         text: async () => '<html></html>',
@@ -188,9 +189,8 @@ describe('Phase 5 Eval – Validation Matrix', () => {
       await client.fetchDocument('32024R1689', 'DEU')
 
       expect(mockFetch).toHaveBeenCalledOnce()
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit]
-      const headers = options.headers as Record<string, string>
-      expect(headers['Accept-Language']).toBe('de')
+      const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/DE/TXT/HTML/')
     })
 
     it('V12: buildSparqlQuery contains BIND and ?resType', () => {
