@@ -55,6 +55,63 @@
 **Auth:** Keine — beide Endpoints sind vollständig öffentlich
 **Server-Pattern:** Factory-Funktion `createServer()` erstellt pro Session einen neuen `McpServer` (gemäß offiziellem SDK-Beispiel)
 
+### Agent-DX: MCP Prompt als Skill-File
+
+Inspiriert durch das "Skill Files as Agent Documentation"-Pattern (vgl. CLI-for-AI-Agents):
+Domänenwissen, das nicht in Tool-Descriptions passt, wird als **MCP Prompt** exponiert.
+
+Der Server registriert einen Prompt `eurlex_guide`, den der Agent bei Bedarf abruft:
+
+```typescript
+server.prompt('eurlex_guide', {}, () => ({
+  messages: [{
+    role: 'user',
+    content: {
+      type: 'text',
+      text: `# EUR-Lex Recherche-Guide
+
+## CELEX-Nummern-Schema
+- 3 = Sekundärrecht EU (Verordnungen, Richtlinien, Entscheidungen)
+- Danach: Jahr (4-stellig) + Typ-Buchstabe + Dokumentnummer
+- Beispiele: 32024R1689 (AI Act), 32016R0679 (DSGVO), 32022L2555 (NIS2)
+- R = Regulation (Verordnung), L = Richtlinie, D = Entscheidung
+
+## Typ-Buchstaben → resource_type Mapping
+| CELEX-Buchstabe | resource_type | Bedeutung |
+|---|---|---|
+| R | REG | Verordnung (direkt anwendbar) |
+| L | DIR | Richtlinie (muss umgesetzt werden) |
+| D | DEC | Entscheidung/Beschluss |
+
+## Suchstrategie
+1. eurlex_search sucht NUR in Titeln, nicht im Volltext
+2. Suchbegriffe in der Sprache des Titels verwenden (DE Titel → DE Suchbegriff)
+3. Bei Nicht-Treffern: Synonyme probieren ("KI" vs "künstliche Intelligenz")
+4. Bekannte CELEX-ID? → Direkt eurlex_fetch nutzen, Search überspringen
+
+## Bekannte CELEX-IDs wichtiger Rechtsakte
+- AI Act: 32024R1689
+- DSGVO: 32016R0679
+- NIS2-Richtlinie: 32022L2555
+- Digital Services Act: 32022R2065
+- Digital Markets Act: 32022R1925
+- Data Act: 32023R2854
+- Data Governance Act: 32022R0868
+
+## Limitations
+- Sehr lange Dokumente (AI Act: ~1.3 MB) werden bei max_chars abgeschnitten
+- SPARQL-Antwortzeit: 2-10 Sekunden
+- Nicht alle Dokumente haben eine XHTML-Version`
+    }
+  }]
+}))
+```
+
+**Warum Prompt statt Tool-Description:**
+- Tool-Descriptions werden bei JEDEM Tool-Call geladen → Context Window Tax
+- MCP Prompt wird nur on-demand abgerufen wenn der Agent Domänenwissen braucht
+- Entspricht dem "Context Window Discipline"-Prinzip aus dem CLI-for-AI-Agents Artikel
+
 ---
 
 ## 3. Endpoints — Technische Details
@@ -185,6 +242,8 @@ eurlex-mcp-server/
 │   ├── schemas/
 │   │   ├── searchSchema.ts   # Zod: eurlex_search Input
 │   │   └── fetchSchema.ts    # Zod: eurlex_fetch Input
+│   ├── prompts/
+│   │   └── guide.ts          # eurlex_guide Prompt (Agent-Kontext on-demand)
 │   └── tools/
 │       ├── search.ts         # eurlex_search Tool-Impl.
 │       └── fetch.ts          # eurlex_fetch Tool-Impl.
@@ -197,6 +256,13 @@ eurlex-mcp-server/
 ---
 
 ## 5. Tool-Definitionen
+
+### Design-Prinzip: Schlanke Descriptions, Kontext on-demand
+
+Inspiriert durch das "Context Window Discipline"-Pattern:
+- **Tool-Descriptions** enthalten nur das Minimum für den Agent: Was tut das Tool, welche Parameter gibt es
+- **Domänenwissen** (CELEX-Schema, Suchstrategien, bekannte IDs) lebt im `eurlex_guide` Prompt
+- Der Agent ruft den Prompt nur ab wenn er Kontext braucht — nicht bei jedem Tool-Call
 
 ### Tool 1: `eurlex_search`
 
@@ -231,7 +297,7 @@ z.object({
     eurlex_url: string   // https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32024R1689
   }>,
   total: number,
-  query_used: string     // Verwendete SPARQL-Query (für Debugging)
+  query_used: string     // Verwendete SPARQL-Query (Transparenz für Agent — entspricht dry-run Pattern)
 }
 ```
 
@@ -270,6 +336,28 @@ z.object({
 ```
 
 **Hinweis:** Für `format: "plain"` wird XHTML geholt und Tags werden serverseitig entfernt. Der Cellar-Endpoint liefert kein Plaintext direkt.
+
+### Input-Hardening (Agent-Sicherheit)
+
+Inspiriert durch "Adversarial Input Hardening" (vgl. CLI-for-AI-Agents):
+Agents halluzinieren. Der Server muss damit umgehen.
+
+**SPARQL-Injection-Schutz in `buildSparqlQuery()`:**
+- Query-Parameter wird escaped: Anführungszeichen `"` → `\"`, Backslashes `\` → `\\`
+- Keine String-Interpolation direkt in SPARQL — stattdessen Escape-Funktion
+
+```typescript
+function escapeSparqlString(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+// Verwendung im Query-Builder:
+FILTER(CONTAINS(LCASE(STR(?title)), LCASE("${escapeSparqlString(params.query)}")))
+```
+
+**CELEX-ID-Validierung:**
+- Zod-Regex `^\d[A-Z0-9]{4,20}$` verhindert Path-Traversal und Injection
+- Zusätzlich: Keine `/`, `..`, `?`, `#` in CELEX-IDs erlaubt (durch Regex bereits abgedeckt)
 
 ---
 
@@ -1011,6 +1099,8 @@ if (transport === 'http') {
 | V18 | MCP Inspector zeigt 2 Tools | Manuell | `eurlex_search` + `eurlex_fetch` |
 | V19 | Claude kann AI Act-Fragen beantworten | E2E-Manuell | Korrekte Antwort auf "Was regelt Art. 6?" |
 | V20 | Session-Management funktioniert | Smoke-Test | Mcp-Session-Id Header in Response |
+| V21 | SPARQL-Injection wird escaped | Unit-Test | Query mit `"` und `\` im Suchbegriff → kein SPARQL-Syntax-Error |
+| V22 | eurlex_guide Prompt abrufbar | Smoke-Test | MCP Inspector zeigt Prompt mit CELEX-Guide |
 
 ---
 
@@ -1019,16 +1109,17 @@ if (transport === 'http') {
 ### Pro Tool (eurlex_search & eurlex_fetch)
 - [ ] Alle Unit-Tests grün (RED→GREEN vollständig durchlaufen)
 - [ ] Zod-Schema mit `.strict()` und sinnvollen Constraints
-- [ ] Tool-Description enthält: Was es tut, Parameter, Return-Schema, Beispiele, Error-Fälle
+- [ ] Tool-Description: schlank, nur was der Agent zum Aufrufen braucht (Domänenwissen → Prompt)
 - [ ] Annotations gesetzt: `readOnlyHint: true, destructiveHint: false`
 - [ ] Error-Handling: API-Fehler → `isError: true` + actionable Meldung
+- [ ] Input-Hardening: SPARQL-Injection escaped, CELEX-ID validiert
 
 ### Server gesamt
 - [ ] `npm run build` ohne TypeScript-Fehler
 - [ ] `npm test` → alle Unit-Tests grün
 - [ ] Integration-Tests: alle Live-Validierungen bestanden
 - [ ] `/health` Endpoint antwortet
-- [ ] MCP Inspector zeigt beide Tools mit korrekten Schemas
+- [ ] MCP Inspector zeigt 2 Tools + 1 Prompt (`eurlex_guide`)
 - [ ] Keine `any`-Types im Produktionscode
 - [ ] Session-Management gemäß offiziellem SDK-Pattern
 
@@ -1089,20 +1180,77 @@ NODE_ENV: production
 
 ## 11. Reihenfolge der Umsetzung
 
-```
-1. Projekt-Setup (package.json, tsconfig, vitest.config)         ~15 min
-2. constants.ts + types.ts                                        ~10 min
-3. RED: cellarClient.test.ts schreiben (Tests 1-14)              ~30 min
-4. GREEN: cellarClient.ts implementieren                          ~45 min
-5. REFACTOR: CellarClient aufräumen                              ~15 min
-6. RED: search.tool.test.ts + fetch.tool.test.ts (Tests 15-20)  ~20 min
-7. GREEN: tools/search.ts + tools/fetch.ts                       ~30 min
-8. index.ts + Server-Registration (Factory-Pattern)               ~20 min
-9. npm run build → Fehler beheben                                ~15 min
-10. Integration-Tests ausführen (V1-V5)                          ~10 min
-11. MCP Inspector manuell testen (V18)                           ~10 min
-12. Dockerfile + Coolify Deployment                              ~20 min
-```
+### Phase 1: Foundation
+> **Meilenstein:** Projekt kompiliert, Testframework läuft
+
+| # | Schritt | Artefakte |
+|---|---|---|
+| 1 | Projekt-Setup (package.json, tsconfig, vitest.config) | Config-Dateien |
+| 2 | constants.ts + types.ts | `src/constants.ts`, `src/types.ts` |
+
+**Check:** `npm run build` kompiliert ohne Fehler, `npm test` läuft (0 Tests)
+
+---
+
+### Phase 2: Core (CellarClient)
+> **Meilenstein:** `npm test` grün für alle Client-Tests (Tests 1-14 + V21)
+
+| # | Schritt | Artefakte |
+|---|---|---|
+| 3 | RED: cellarClient.test.ts schreiben (Tests 1-14 + V21) | `tests/cellarClient.test.ts` |
+| 4 | GREEN: cellarClient.ts implementieren (inkl. `escapeSparqlString`) | `src/services/cellarClient.ts` |
+| 5 | REFACTOR: CellarClient aufräumen | — |
+
+**Check:** `npm test` → alle CellarClient-Tests grün
+
+---
+
+### Phase 3: Tools + Prompt
+> **Meilenstein:** `npm test` komplett grün (Tests 1-20 + V21)
+
+| # | Schritt | Artefakte |
+|---|---|---|
+| 6 | RED: search.tool.test.ts + fetch.tool.test.ts (Tests 15-20) | `tests/search.tool.test.ts`, `tests/fetch.tool.test.ts` |
+| 7 | GREEN: tools/search.ts + tools/fetch.ts | `src/tools/search.ts`, `src/tools/fetch.ts` |
+| 8 | prompts/guide.ts — eurlex_guide Prompt registrieren | `src/prompts/guide.ts` |
+
+**Check:** `npm test` → alle Tests grün
+
+---
+
+### Phase 4: Server
+> **Meilenstein:** `npm run build` erfolgreich, `/health` antwortet
+
+| # | Schritt | Artefakte |
+|---|---|---|
+| 9 | index.ts + Server-Registration (Factory-Pattern + Prompt) | `src/index.ts` |
+| 10 | npm run build → TypeScript-Fehler beheben | `dist/` |
+
+**Check:** `npm run build` ohne Fehler, `curl localhost:3001/health` → `{"status":"ok"}`
+
+---
+
+### Phase 5: Validation
+> **Meilenstein:** Alle Validierungen bestanden (V1-V5, V18, V22)
+
+| # | Schritt | Validierungen |
+|---|---|---|
+| 11 | Integration-Tests ausführen | V1-V5 (Live Cellar API) |
+| 12 | MCP Inspector testen | V18 (2 Tools) + V22 (1 Prompt) |
+
+**Check:** `npm run test:integration` grün, MCP Inspector zeigt `eurlex_search`, `eurlex_fetch`, `eurlex_guide`
+
+---
+
+### Phase 6: Deploy
+> **Meilenstein:** Server live erreichbar, claude.ai kann Tools nutzen
+
+| # | Schritt | Artefakte |
+|---|---|---|
+| 13 | Dockerfile erstellen + testen | `Dockerfile` |
+| 14 | Coolify Deployment + claude.ai MCP-Config | Prod-URL |
+
+**Check:** `curl https://eurlex-mcp.{domain}/health` → `{"status":"ok"}`, claude.ai findet beide Tools
 
 ---
 
@@ -1140,3 +1288,6 @@ Folgende Änderungen wurden nach technischer Recherche und Live-Verifizierung (2
 | 9 | fetchDocument Signatur | 3 Parameter (inkl. format) | 2 Parameter (celex_id, language) | Cellar liefert immer XHTML; Format-Konversion im Tool |
 | 10 | HTTP-Endpoint | Nur POST /mcp | POST + GET + DELETE /mcp | Gemäß MCP Spec für Session-Management |
 | 11 | EUR-Lex Frontend-URLs | Als Fetch-Quelle | Nur als Referenz-Link in Search-Results | AWS WAF blockiert programmatischen Zugriff |
+| 12 | Agent-Kontext | Alles in Tool-Descriptions | MCP Prompt `eurlex_guide` für on-demand Domänenwissen | Context Window Discipline (CLI-for-AI-Agents Pattern) |
+| 13 | Input-Hardening | Keine Escape-Logik | `escapeSparqlString()` für SPARQL-Injection-Schutz | Agents halluzinieren — Adversarial Input Hardening |
+| 14 | CLI-Layer | Nicht evaluiert | Bewusst kein CLI — MCP Abstraction Tax zu niedrig bei 2 Tools | Kein Mehrwert für CLI-Binary bei diesem API-Surface |
