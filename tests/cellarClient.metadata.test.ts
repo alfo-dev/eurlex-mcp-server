@@ -133,6 +133,17 @@ describe('CellarClient – Metadata', () => {
       expect(result.directory_codes).toEqual([])
     })
 
+    it('M7b – throws when no bindings returned (CELEX not found)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: { bindings: [] } }),
+      })
+
+      await expect(client.metadataQuery('39999X0000', 'DEU')).rejects.toThrow(
+        'No metadata found for CELEX: 39999X0000'
+      )
+    })
+
     it('M8 – throws on SPARQL endpoint error (HTTP 500)', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
