@@ -185,18 +185,18 @@ export class CellarClient {
   }
 
   /**
-   * Fetches a document from EUR-Lex by CELEX identifier.
-   * Uses the EUR-Lex HTML endpoint which is more reliable than the Cellar REST API
-   * (Cellar often returns HTTP 202 with empty body for content negotiation).
+   * Fetches a document from Cellar by CELEX identifier using content negotiation.
+   * Uses Accept-Language header to select the language variant.
    */
   async fetchDocument(celex_id: string, language: string): Promise<string> {
     const httpLang = LANGUAGE_HTTP_MAP[language] ?? 'de';
-    const url = `${EURLEX_BASE}/${httpLang.toUpperCase()}/TXT/HTML/?uri=CELEX:${celex_id}`;
+    const url = `${CELLAR_REST_BASE}/${celex_id}`;
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        Accept: 'text/html',
+        Accept: 'application/xhtml+xml',
+        'Accept-Language': httpLang,
       },
       redirect: 'follow',
     });
