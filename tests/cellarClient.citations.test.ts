@@ -32,6 +32,15 @@ describe('buildCitationsQuery()', () => {
     expect(sparql).toContain('UNION')
   })
 
+  it('C8a – query escapes double-quotes in CELEX ID for defense-in-depth', () => {
+    const client = new CellarClient()
+    const malicious = '32021R"0694'
+    const sparql = client.buildCitationsQuery(malicious, 'DEU', 'both', 20)
+
+    expect(sparql).toContain('32021R\\"0694')
+    expect(sparql).not.toMatch(/32021R"0694/)
+  })
+
   it('C8 – includes legal basis, amends, and repeals relationships', () => {
     const client = new CellarClient()
     const sparql = client.buildCitationsQuery('32024R1689', 'DEU', 'both', 20)
