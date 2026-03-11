@@ -32,6 +32,25 @@ describe('buildEurovocQuery()', () => {
 
     expect(sparql).toContain('resource-type/REG')
   })
+
+  it('E12 – rejects URI with SPARQL injection characters', () => {
+    const client = new CellarClient()
+    const maliciousUri = 'http://evil.example.org/concept> . ?x ?y ?z . <http://foo'
+
+    // The method should throw when the URI contains characters that could break
+    // out of the <...> angle-bracket syntax and inject arbitrary SPARQL
+    expect(() => {
+      client.buildEurovocQuery(maliciousUri, 'any', 'ENG', 10)
+    }).toThrow()
+  })
+
+  it('E13 – escapes SPARQL injection characters in concept label', () => {
+    const client = new CellarClient()
+    const sparql = client.buildEurovocQuery('data "protection', 'any', 'ENG', 10)
+
+    expect(sparql).toContain('data \\"protection')
+    expect(sparql).not.toContain('data "protection')
+  })
 })
 
 describe('eurovocQuery()', () => {

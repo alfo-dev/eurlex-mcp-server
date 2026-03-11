@@ -459,6 +459,10 @@ export class CellarClient {
     const lang = LANGUAGE_URI_MAP[language] ?? language;
     const isUri = concept.startsWith('http');
 
+    if (isUri && /[><\s"{}|\\^`]/.test(concept)) {
+      throw new Error(`Invalid URI: contains characters not allowed in SPARQL IRIs`);
+    }
+
     const conceptFilter = isUri
       ? `  ?work cdm:work_is_about_concept_eurovoc <${concept}> .`
       : [
