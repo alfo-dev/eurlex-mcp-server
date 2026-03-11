@@ -45,3 +45,18 @@ export interface MetadataResult {
   directory_codes: string[]
   eurlex_url: string
 }
+
+export interface CitationEntry {
+  celex: string
+  title: string
+  date: string
+  type: string
+  relationship: 'cites' | 'cited_by' | 'amends' | 'amended_by' | 'based_on' | 'basis_for' | 'repeals' | 'repealed_by'
+  eurlex_url: string
+}
+
+export interface CitationsResult {
+  celex_id: string
+  citations: CitationEntry[]
+  total: number
+}

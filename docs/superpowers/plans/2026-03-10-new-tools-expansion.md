@@ -642,7 +642,7 @@ export interface CitationEntry {
   title: string
   date: string
   type: string
-  relationship: 'cites' | 'cited_by' | 'amends' | 'amended_by' | 'based_on' | 'basis_for'
+  relationship: 'cites' | 'cited_by' | 'amends' | 'amended_by' | 'based_on' | 'basis_for' | 'repeals' | 'repealed_by'
   eurlex_url: string
 }
 
@@ -736,11 +736,13 @@ describe('buildCitationsQuery()', () => {
     expect(sparql).toContain('UNION')
   })
 
-  it('C8 – includes legal basis relationships', () => {
+  it('C8 – includes legal basis, amends, and repeals relationships', () => {
     const client = new CellarClient()
     const sparql = client.buildCitationsQuery('32024R1689', 'DEU', 'both', 20)
 
     expect(sparql).toContain('resource_legal_based_on_resource_legal')
+    expect(sparql).toContain('resource_legal_amends_resource_legal')
+    expect(sparql).toContain('resource_legal_repeals_resource_legal')
   })
 })
 
@@ -813,7 +815,9 @@ In `src/services/cellarClient.ts`, add to CellarClient class:
       '    UNION',
       '    { ?sourceWork cdm:resource_legal_based_on_resource_legal ?relWork . BIND("based_on" AS ?rel) }',
       '    UNION',
-      '    { ?sourceWork cdm:resource_legal_adopts_resource_legal ?relWork . BIND("amends" AS ?rel) }',
+      '    { ?sourceWork cdm:resource_legal_amends_resource_legal ?relWork . BIND("amends" AS ?rel) }',
+    '    UNION',
+    '    { ?sourceWork cdm:resource_legal_repeals_resource_legal ?relWork . BIND("repeals" AS ?rel) }',
       '  }',
     ].join('\n')
 
@@ -831,9 +835,15 @@ In `src/services/cellarClient.ts`, add to CellarClient class:
       '  }',
       '  UNION',
       '  {',
-      `    ?relWork cdm:resource_legal_adopts_resource_legal ?sourceWork .`,
+      `    ?relWork cdm:resource_legal_amends_resource_legal ?sourceWork .`,
       `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
       '    BIND("amended_by" AS ?rel)',
+      '  }',
+      '  UNION',
+      '  {',
+      `    ?relWork cdm:resource_legal_repeals_resource_legal ?sourceWork .`,
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    BIND("repealed_by" AS ?rel)',
       '  }',
     ].join('\n')
 
