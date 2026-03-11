@@ -7,6 +7,7 @@ import express, { type Request, type Response } from 'express'
 import { registerSearchTool } from './tools/search.js'
 import { registerFetchTool } from './tools/fetch.js'
 import { registerMetadataTool } from './tools/metadata.js'
+import { registerCitationsTool } from './tools/citations.js'
 import { registerGuidePrompt } from './prompts/guide.js'
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ export function createServer(): McpServer {
   registerSearchTool(server)
   registerFetchTool(server)
   registerMetadataTool(server)
+  registerCitationsTool(server)
   registerGuidePrompt(server)
 
   return server

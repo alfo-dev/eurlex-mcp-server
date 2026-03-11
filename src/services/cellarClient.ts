@@ -5,7 +5,7 @@ import {
   DEFAULT_LANGUAGE,
   DEFAULT_LIMIT,
 } from '../constants.js';
-import type { SparqlQueryParams, SearchResult, MetadataResult } from '../types.js';
+import type { SparqlQueryParams, SearchResult, MetadataResult, CitationsResult } from '../types.js';
 
 /** Maps 3-letter language codes to CDM expression language URI suffixes */
 const LANGUAGE_URI_MAP: Record<string, string> = {
@@ -41,6 +41,19 @@ interface MetadataSparqlResponse {
       authors?: SparqlBindingValue;
       eurovoc?: SparqlBindingValue;
       dirCodes?: SparqlBindingValue;
+    }>;
+  };
+}
+
+/** Shape of the citations SPARQL JSON results */
+interface CitationsSparqlResponse {
+  results: {
+    bindings: Array<{
+      celex: SparqlBindingValue;
+      title: SparqlBindingValue;
+      date?: SparqlBindingValue;
+      resType: SparqlBindingValue;
+      rel: SparqlBindingValue;
     }>;
   };
 }
@@ -314,6 +327,122 @@ export class CellarClient {
       eurovoc_concepts: splitConcat(binding.eurovoc?.value),
       directory_codes: splitConcat(binding.dirCodes?.value),
       eurlex_url: `${EURLEX_BASE}/${httpLang}/TXT/?uri=CELEX:${celexId}`,
+    };
+  }
+
+  /**
+   * Builds a SPARQL query to retrieve citations/relationships for a given CELEX ID.
+   */
+  buildCitationsQuery(
+    celexId: string,
+    language: string,
+    direction: 'cites' | 'cited_by' | 'both',
+    limit: number
+  ): string {
+    const lang = LANGUAGE_URI_MAP[language] ?? language;
+    const escaped = escapeSparqlString(celexId);
+
+    const citesBlock = [
+      '  {',
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    { ?sourceWork cdm:work_cites_work ?relWork . BIND("cites" AS ?rel) }',
+      '    UNION',
+      '    { ?sourceWork cdm:resource_legal_based_on_resource_legal ?relWork . BIND("based_on" AS ?rel) }',
+      '    UNION',
+      '    { ?sourceWork cdm:resource_legal_amends_resource_legal ?relWork . BIND("amends" AS ?rel) }',
+      '    UNION',
+      '    { ?sourceWork cdm:resource_legal_repeals_resource_legal ?relWork . BIND("repeals" AS ?rel) }',
+      '  }',
+    ].join('\n');
+
+    const citedByBlock = [
+      '  {',
+      `    ?relWork cdm:work_cites_work ?sourceWork .`,
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    BIND("cited_by" AS ?rel)',
+      '  }',
+      '  UNION',
+      '  {',
+      `    ?relWork cdm:resource_legal_based_on_resource_legal ?sourceWork .`,
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    BIND("basis_for" AS ?rel)',
+      '  }',
+      '  UNION',
+      '  {',
+      `    ?relWork cdm:resource_legal_amends_resource_legal ?sourceWork .`,
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    BIND("amended_by" AS ?rel)',
+      '  }',
+      '  UNION',
+      '  {',
+      `    ?relWork cdm:resource_legal_repeals_resource_legal ?sourceWork .`,
+      `    ?sourceWork cdm:resource_legal_id_celex "${escaped}" .`,
+      '    BIND("repealed_by" AS ?rel)',
+      '  }',
+    ].join('\n');
+
+    let body: string;
+    if (direction === 'cites') body = citesBlock;
+    else if (direction === 'cited_by') body = citedByBlock;
+    else body = `${citesBlock}\n  UNION\n${citedByBlock}`;
+
+    return [
+      'PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>',
+      '',
+      'SELECT DISTINCT ?celex ?title ?date ?resType ?rel WHERE {',
+      body,
+      '  ?relWork cdm:resource_legal_id_celex ?celex .',
+      '  ?relWork cdm:work_has_resource-type ?resTypeUri .',
+      '  BIND(REPLACE(STR(?resTypeUri), "^.*/", "") AS ?resType)',
+      `  ?relExpr cdm:expression_belongs_to_work ?relWork .`,
+      `  ?relExpr cdm:expression_uses_language <http://publications.europa.eu/resource/authority/language/${lang}> .`,
+      '  ?relExpr cdm:expression_title ?title .',
+      '  OPTIONAL { ?relWork cdm:work_date_document ?date . }',
+      '}',
+      'ORDER BY DESC(?date)',
+      `LIMIT ${limit}`,
+    ].join('\n');
+  }
+
+  /**
+   * Fetches citations/relationships for a CELEX ID from the SPARQL endpoint.
+   */
+  async citationsQuery(
+    celexId: string,
+    language: string,
+    direction: 'cites' | 'cited_by' | 'both',
+    limit: number
+  ): Promise<CitationsResult> {
+    const sparql = this.buildCitationsQuery(celexId, language, direction, limit);
+    const httpLang = LANGUAGE_HTTP_MAP[language] ?? 'de';
+
+    const response = await fetch(SPARQL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/sparql-query',
+        Accept: 'application/sparql-results+json',
+      },
+      body: sparql,
+    });
+
+    if (!response.ok) {
+      throw new Error(`SPARQL endpoint error: ${response.status}`);
+    }
+
+    const data = (await response.json()) as CitationsSparqlResponse;
+    const citations = data.results.bindings.map((b) => ({
+      celex: b.celex.value,
+      title: b.title.value,
+      date: b.date?.value ?? '',
+      type: b.resType.value,
+      relationship: b.rel.value,
+      eurlex_url: `${EURLEX_BASE}/${httpLang}/TXT/?uri=CELEX:${b.celex.value}`,
+    }));
+
+    return {
+      celex_id: celexId,
+      citations,
+      total: citations.length,
     };
   }
 }
