@@ -38,7 +38,11 @@ export function createServer(): McpServer {
 // HTTP transport (Streamable HTTP)
 // ---------------------------------------------------------------------------
 
-export async function runHTTP(): Promise<void> {
+export function createApp(): {
+  app: express.Express
+  transports: Map<string, StreamableHTTPServerTransport>
+  lastSeen: Map<string, number>
+} {
   const app = express()
   app.use(express.json())
 
@@ -126,6 +130,12 @@ export async function runHTTP(): Promise<void> {
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', server: 'eurlex-mcp-server' })
   })
+
+  return { app, transports, lastSeen }
+}
+
+export async function runHTTP(): Promise<void> {
+  const { app } = createApp()
 
   const port = process.env.PORT || '3001'
   app.listen(Number(port), () => {

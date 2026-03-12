@@ -468,7 +468,12 @@ export class CellarClient {
     const lang = LANGUAGE_URI_MAP[language] ?? language;
     const isUri = concept.startsWith('http');
 
-    if (isUri && /[><\s"{}|\\^`]/.test(concept)) {
+    // Reject angle brackets in any input — they can break SPARQL IRI syntax
+    if (/[<>]/.test(concept)) {
+      throw new Error(`Invalid URI: contains characters not allowed in SPARQL IRIs`);
+    }
+
+    if (isUri && /[\s"{}|\\^`]/.test(concept)) {
       throw new Error(`Invalid URI: contains characters not allowed in SPARQL IRIs`);
     }
 

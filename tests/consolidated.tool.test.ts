@@ -148,4 +148,18 @@ describe('handleEurlexConsolidated()', () => {
 
     expect(result.isError).toBe(true)
   })
+
+  it('CO-SCHEMA – rejects unknown doc_type via Zod schema validation', async () => {
+    const result = await handleEurlexConsolidated({
+      doc_type: 'unknown',
+      year: 2024,
+      number: 1689,
+      language: 'DEU',
+      format: 'xhtml',
+      max_chars: 20000,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toMatch(/Error:/)
+  })
 })

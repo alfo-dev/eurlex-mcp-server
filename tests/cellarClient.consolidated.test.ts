@@ -63,4 +63,43 @@ describe('fetchConsolidated()', () => {
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/deu/xhtml')
   })
+
+  it('CO-ENG – constructs correct ELI URL for ENG language', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => '<html><body>English content</body></html>',
+    })
+
+    const client = new CellarClient()
+    const result = await client.fetchConsolidated('reg', 2016, 679, 'ENG')
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/eng/xhtml')
+    expect(result.eliUrl).toContain('/eng/xhtml')
+  })
+
+  it('CO-FRA – constructs correct ELI URL for FRA language', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => '<html><body>Contenu français</body></html>',
+    })
+
+    const client = new CellarClient()
+    const result = await client.fetchConsolidated('reg', 2016, 679, 'FRA')
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/fra/xhtml')
+    expect(result.eliUrl).toContain('/fra/xhtml')
+  })
+
+  it('CO-500 – handles non-404 HTTP errors with status code', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    })
+
+    const client = new CellarClient()
+    await expect(client.fetchConsolidated('reg', 2016, 679, 'ENG'))
+      .rejects.toThrow('Consolidated document error: reg/2016/679 (HTTP 500)')
+  })
 })

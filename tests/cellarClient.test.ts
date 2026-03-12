@@ -407,3 +407,35 @@ describe('fetch timeout', () => {
     expect(callArgs[1].signal).toBeDefined()
   })
 })
+
+// ===========================================================================
+// sparqlQuery with empty bindings
+// ===========================================================================
+describe('sparqlQuery() – empty bindings', () => {
+  it('returns empty results array when bindings are empty', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: { bindings: [] } }),
+    })
+
+    const client = new CellarClient()
+    const { results } = await client.sparqlQuery('anything')
+    expect(results).toEqual([])
+  })
+})
+
+// ===========================================================================
+// buildSparqlQuery language fallback
+// ===========================================================================
+describe('buildSparqlQuery() – language fallback', () => {
+  it('uses language code directly when not in LANGUAGE_URI_MAP', () => {
+    const client = new CellarClient()
+    const query = client.buildSparqlQuery({
+      query: 'test',
+      resource_type: 'any',
+      language: 'ITA',
+      limit: 10,
+    })
+    expect(query).toContain('language/ITA')
+  })
+})

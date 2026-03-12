@@ -12,6 +12,7 @@ vi.mock('../src/services/cellarClient.js', () => ({
 }))
 
 import { handleEurlexFetch } from '../src/tools/fetch.js'
+import type { FetchResult } from '../src/types.js'
 
 // ---------------------------------------------------------------------------
 // Reset mocks between tests
@@ -139,5 +140,24 @@ describe('handleEurlexFetch()', () => {
     const parsed = JSON.parse(result.content[0].text)
     expect(parsed.content).not.toContain('<div>')
     expect(parsed.content).toContain('Artikel 1')
+  })
+
+  it('T-TYPE – fetch output matches FetchResult interface fields', async () => {
+    mockFetchDocument.mockResolvedValueOnce('<div><p>Content</p></div>')
+
+    const result = await handleEurlexFetch({
+      celex_id: '32024R1689',
+      language: 'DEU',
+      format: 'xhtml',
+      max_chars: 20000,
+    })
+
+    const parsed: FetchResult = JSON.parse(result.content[0].text)
+    const requiredKeys: (keyof FetchResult)[] = [
+      'celex_id', 'language', 'content', 'truncated', 'char_count', 'source_url',
+    ]
+    for (const key of requiredKeys) {
+      expect(parsed).toHaveProperty(key)
+    }
   })
 })

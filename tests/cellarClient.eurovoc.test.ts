@@ -90,3 +90,17 @@ describe('eurovocQuery()', () => {
     expect(results).toEqual([])
   })
 })
+
+describe('buildEurovocQuery() – URI validation', () => {
+  it('throws on URI with angle brackets', () => {
+    const client = new CellarClient()
+    expect(() => client.buildEurovocQuery('<malicious>', 'any', 'DEU', 10))
+      .toThrow(/invalid uri/i)
+  })
+
+  it('throws on URI with spaces', () => {
+    const client = new CellarClient()
+    expect(() => client.buildEurovocQuery('http://example.com/has space', 'any', 'DEU', 10))
+      .toThrow(/invalid uri/i)
+  })
+})
