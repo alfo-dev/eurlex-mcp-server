@@ -14,7 +14,7 @@ export async function handleEurlexFetch(input: {
 
     const client = new CellarClient()
     const raw = await client.fetchDocument(parsed.celex_id, parsed.language)
-    const { content, truncated, charCount, contentLength } = processContent(raw, parsed.format, parsed.max_chars)
+    const { content, truncated, charCount } = processContent(raw, parsed.format, parsed.max_chars)
 
     return {
       content: [
@@ -26,7 +26,6 @@ export async function handleEurlexFetch(input: {
             content,
             truncated,
             char_count: charCount,
-            content_length: contentLength,
             source_url: `https://publications.europa.eu/resource/celex/${parsed.celex_id}`,
           }),
         },
